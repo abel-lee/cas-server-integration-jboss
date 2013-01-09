@@ -11,12 +11,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import javax.validation.constraints.NotNull;
+
 import org.jasig.cas.ticket.Ticket;
 import org.jboss.cache.Cache;
 import org.jboss.cache.CacheException;
 import org.jboss.cache.Node;
-
-import javax.validation.constraints.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of TicketRegistry that is backed by a JBoss TreeCache.
@@ -27,6 +29,8 @@ import javax.validation.constraints.NotNull;
  *
  */
 public final class JBossCacheTicketRegistry extends AbstractDistributedTicketRegistry {
+	
+	protected final Logger log = LoggerFactory.getLogger(this.getClass());
     
     /** Indicator of what tree branch to put tickets in. */
     private static final String FQN_TICKET = "ticket";
@@ -39,7 +43,10 @@ public final class JBossCacheTicketRegistry extends AbstractDistributedTicketReg
     
     protected void updateTicket(Ticket ticket) {
         try {
-            this.cache.put(FQN_TICKET, ticket.getId(), ticket);
+        	  if(log.isInfoEnabled()){
+        		  log.info("Updating ticket  to registry for:"+ticket.getId());
+        	  }
+            this.cache.put(FQN_TICKET+"/"+ticket.getId(), ticket.getId(), ticket);
         } catch (final CacheException e) {
             throw new RuntimeException(e);
         }
@@ -50,7 +57,10 @@ public final class JBossCacheTicketRegistry extends AbstractDistributedTicketReg
             if (log.isDebugEnabled()){
                 log.debug("Adding ticket to registry for: " + ticket.getId());
             }
-            this.cache.put(FQN_TICKET, ticket.getId(), ticket);
+            if(log.isInfoEnabled()){
+            	 log.info("Adding ticket to registry for: " + ticket.getId());
+         	  }
+            this.cache.put(FQN_TICKET+"/"+ticket.getId(), ticket.getId(), ticket);
         } catch (final CacheException e) {
             log.error(e.getMessage(), e);
             throw new RuntimeException(e);
@@ -62,7 +72,11 @@ public final class JBossCacheTicketRegistry extends AbstractDistributedTicketReg
             if (log.isDebugEnabled()){
                 log.debug("Removing ticket from registry for: " + ticketId);
             }
-            return this.cache.remove(FQN_TICKET, ticketId) != null;
+            if(log.isInfoEnabled()){
+           	 log.info("Removing ticket from registry for: " + ticketId);
+        	  }
+           
+            return this.cache.removeNode(FQN_TICKET+"/"+ticketId);
         } catch (final CacheException e) {
             log.error(e.getMessage(), e);
             return false;
@@ -79,7 +93,10 @@ public final class JBossCacheTicketRegistry extends AbstractDistributedTicketReg
             if (log.isDebugEnabled()){
                 log.debug("Retrieving ticket from registry for: " + ticketId);
             }
-            return getProxiedTicketInstance(this.cache.get(FQN_TICKET, ticketId));
+            if(log.isInfoEnabled()){
+              	 log.info("Retrieving ticket from registry for: " + ticketId);
+           	  }
+            return getProxiedTicketInstance(this.cache.get(FQN_TICKET+"/"+ticketId, ticketId));
         } catch (final CacheException e) {
             log.error(e.getMessage(), e);
             return null;
@@ -88,19 +105,25 @@ public final class JBossCacheTicketRegistry extends AbstractDistributedTicketReg
 
     public Collection<Ticket> getTickets() {
         try {
-            final Node<String, Ticket> node = this.cache.getNode(FQN_TICKET);
+        	 Node<String, Ticket> root =  this.cache.getNode(FQN_TICKET);
+        	 if(root == null){
+        		 return Collections.emptyList();
+        	 }
+            final Set<Node<String, Ticket>> nodes = root.getChildren();
 
-            if (node == null) {
+            if (nodes == null) {
                 return Collections.emptyList();
-            }
-            
-            final Set<String> keys = node.getKeys();
+              }
             final List<Ticket> list = new ArrayList<Ticket>();
-
-            for (final String key : keys) {
-                list.add(node.get(key));
-            }
-
+            for (final Node<String, Ticket> node : nodes) {
+            	 Set<String> subKeys = node.getKeys();
+            	 for (String subkey : subKeys) {
+            		 list.add(node.get(subkey));
+				}
+             }
+            if(log.isInfoEnabled()){
+             	 log.info("Getting ticket from registry for: " +list.size());
+          	  }
             return list;
         } catch (final CacheException e) {
             return Collections.emptyList();

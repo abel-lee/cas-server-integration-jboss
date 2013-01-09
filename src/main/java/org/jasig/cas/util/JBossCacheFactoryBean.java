@@ -5,10 +5,15 @@
  */
 package org.jasig.cas.util;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
 import org.jasig.cas.ticket.Ticket;
 import org.jboss.cache.Cache;
 import org.jboss.cache.CacheFactory;
 import org.jboss.cache.DefaultCacheFactory;
+import org.jboss.cache.jmx.JmxRegistrationManager;
+import org.jboss.mx.util.MBeanServerLocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -31,6 +36,8 @@ public final class JBossCacheFactoryBean implements FactoryBean, InitializingBea
     private Cache<String, Ticket> cache;
     
     private Resource configLocation;
+    
+    private JmxRegistrationManager jmxManager;
 
     public Object getObject() throws Exception {
         return this.cache;
@@ -47,6 +54,13 @@ public final class JBossCacheFactoryBean implements FactoryBean, InitializingBea
     public void afterPropertiesSet() throws Exception {
         final CacheFactory<String, Ticket> cf = new DefaultCacheFactory<String, Ticket>();
         this.cache = cf.createCache(this.configLocation.getInputStream());
+        MBeanServer server = MBeanServerLocator.locate(); 
+		ObjectName on = new ObjectName(
+				"cas:service=cascacheserver");
+	    jmxManager = new JmxRegistrationManager(
+				server, cache, on);
+		jmxManager.registerAllMBeans();
+         
     }
 
     @Required
@@ -57,5 +71,8 @@ public final class JBossCacheFactoryBean implements FactoryBean, InitializingBea
     public void destroy() throws Exception {
         log.info("Shutting down TreeCache service.");
         this.cache.destroy();
+        if(jmxManager!=null){
+        	jmxManager.unregisterAllMBeans();
+        }
     }
 }
